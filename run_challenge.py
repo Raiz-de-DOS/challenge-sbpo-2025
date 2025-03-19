@@ -4,11 +4,11 @@ import sys
 import platform
 
 # Paths to the libraries
-CPLEX_PATH = "$HOME/CPLEX_Studio2211/opl/bin/arm64_osx/"
+CPLEX_PATH = "$HOME/Users/DAFNE/OneDrive/Documentos/GitHub/challenge-sbpo-2025/cplex/lib/" #cambiarlo antes de enviarlo al jurado
 OR_TOOLS_PATH = "$HOME/Documents/or-tools/build/lib/"
 
 USE_CPLEX = True
-USE_OR_TOOLS = True
+USE_OR_TOOLS = False
 
 MAX_RUNNING_TIME = "605s"
 

@@ -1,5 +1,6 @@
 package org.sbpo2025.challenge;
 
+import ilog.concert.IloException;
 import org.apache.commons.lang3.time.StopWatch;
 
 import java.io.BufferedReader;
@@ -121,7 +122,12 @@ public class Challenge {
         challenge.readInput(args[0]);
         var challengeSolver = new ChallengeSolver(
                 challenge.orders, challenge.aisles, challenge.nItems, challenge.waveSizeLB, challenge.waveSizeUB);
-        ChallengeSolution challengeSolution = challengeSolver.solve(stopWatch);
+        ChallengeSolution challengeSolution = null;
+        try {
+            challengeSolution = challengeSolver.solve(stopWatch);
+        } catch (IloException e) {
+            System.out.println("error");
+        }
 
         challenge.writeOutput(challengeSolution, args[1]);
     }
