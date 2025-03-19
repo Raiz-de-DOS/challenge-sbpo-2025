@@ -7,7 +7,6 @@ import ilog.concert.IloNumVar;
 import ilog.cplex.IloCplex;
 import org.apache.commons.lang3.time.StopWatch;
 
-import javax.naming.spi.Resolver;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -86,25 +85,25 @@ public class ChallengeSolver {
     }
 
     private List<IloNumVar> planteoPasillosFijos(int aPrima) throws IloException {
-        List<IloNumVar> res = new List[2];
-        IloNumVar[] listaW = new IloNumVar[this.orders.size()];
-        IloNumVar[] listaA = new IloNumVar[this.orders.size()];
+        List<IloNumVar> resPasillos = new ArrayList<>();
+        IloNumVar[] listaW1 = new IloNumVar[this.orders.size()];
+        IloNumVar[] listaA1 = new IloNumVar[this.aisles.size()];
 
         //Si la orden pertenece a la wave
         for(int o = 0; o < this.orders.size(); o++){
-            listaW[o] = prob.boolVar(String.format("W_%d",o));
+            listaW1[o] = prob.boolVar(String.format("W_%d",o));
         }
 
         //Si se usa el pasillo a
         for(int a = 0; a < aPrima; a++){
-            listaA[a] = prob.boolVar(String.format("A_%d",a));
+            listaA1[a] = prob.boolVar(String.format("A_%d",a));
         }
 
         //La cantidad de elementos que se toman en la Wave está en rango
         IloLinearIntExpr suma = prob.linearIntExpr();
         for (int o = 0; o < this.orders.size(); o++) {
             for (Map.Entry<Integer, Integer> i : this.orders.get(o).entrySet()) {
-                suma.addTerm(i.getValue().intValue(), (IloIntVar) listaW[o]);
+                suma.addTerm(i.getValue().intValue(), (IloIntVar) listaW1[o]);
             }
         }
         prob.addLe(suma, this.waveSizeUB);
@@ -117,11 +116,11 @@ public class ChallengeSolver {
 
             for (int o = 0; o < this.orders.size(); o++) {
                 int u_oi = this.orders.get(o).getOrDefault(i, 0);
-                izq.addTerm(u_oi, (IloIntVar) listaW[o]);
+                izq.addTerm(u_oi, (IloIntVar) listaW1[o]);
             }
             for (int a = 0; a < this.aisles.size(); a++) {
                 int u_ai = this.aisles.get(a).getOrDefault(i, 0);
-                der.addTerm(u_ai, (IloIntVar) listaA[a]);
+                der.addTerm(u_ai, (IloIntVar) listaA1[a]);
             }
             prob.addLe(izq, der); // Agrega la restricción
         }
@@ -129,38 +128,70 @@ public class ChallengeSolver {
         //La cantidad de pasillos usados es A* (pasado por parámetro)
         IloLinearIntExpr sumaDeA = prob.linearIntExpr();
         for (int a = 0; a < this.aisles.size(); a++) {
-            sumaDeA.addTerm(1, (IloIntVar) listaA[a]);
+            sumaDeA.addTerm(1, (IloIntVar) listaA1[a]);
         }
         prob.addEq(sumaDeA, aPrima);
         prob.addMaximize(suma);
 
-        res = [listaW, listaA];
-        return res;
+        Collections.addAll(resPasillos, listaW1);
+        Collections.addAll(resPasillos, listaA1);
+        return resPasillos;
     }
 
-    private Map<Integer, Boolean>[] planteo_busqueda_binaria(int k) {
-        Map<Integer, Boolean>[] solucion = new Map[2];
-        IloNumVar[] listaW = new IloNumVar[this.orders.size()];
-        IloNumVar[] listaA = new IloNumVar[this.orders.size()];
+    private List<IloNumVar> planteo_busqueda_binaria(int k) throws IloException {
+        List<IloNumVar> resBinaria = new ArrayList<>();
+        IloNumVar[] listaW2 = new IloNumVar[this.orders.size()];
+        IloNumVar[] listaA2 = new IloNumVar[this.aisles.size()];
 
         //Si la orden pertenece a la wave
         for(int o = 0; o < this.orders.size(); o++){
-            listaW[o] = prob.boolVar(String.format("W_%d",o));
+            listaW2[o] = prob.boolVar(String.format("W_%d",o));
         }
 
         //Si se usa el pasillo a
         for(int a = 0; a < this.aisles.size(); a++){
-            listaA[a] = prob.boolVar(String.format("A_%d",a));
+            listaA2[a] = prob.boolVar(String.format("A_%d",a));
         }
-        //restricciones
-        //set objective
-        //writeProblem
-        return solucion;
+
+        //La cantidad de elementos que se toman en la Wave está en rango
+        IloLinearIntExpr suma = prob.linearIntExpr();
+        for (int o = 0; o < this.orders.size(); o++) {
+            for (Map.Entry<Integer, Integer> i : this.orders.get(o).entrySet()) {
+                suma.addTerm(i.getValue().intValue(), (IloIntVar) listaW2[o]);
+
+        //Restricción de la forma f = k * g
+        IloLinearIntExpr pasillosUtilizados = prob.linearIntExpr();
+            for (int a = 0; a < this.aisles.size(); a++) {
+                pasillosUtilizados.addTerm(k, (IloIntVar) listaA2[a]);
+            }
+
+        prob.addLe(pasillosUtilizados.addTerm(-1, EPSILON), suma);
+        prob.addGe(pasillosUtilizados.addTerm(1, EPSILON), suma);
+
+        //Función objetivo: REVISAR
+        for (int i = 0; i < this.nItems; i++) {
+            IloLinearIntExpr izq = prob.linearIntExpr();
+            IloLinearIntExpr der = prob.linearIntExpr();
+
+            for (int o = 0; o < this.orders.size(); o++) {
+                int u_oi = this.orders.get(o).getOrDefault(i, 0);
+                izq.addTerm(u_oi, (IloIntVar) listaW2[o]);
+            }
+            for (int a = 0; a < this.aisles.size(); a++) {
+                int u_ai = this.aisles.get(a).getOrDefault(i, 0);
+                der.addTerm(u_ai, (IloIntVar) listaA2[a]);
+            }
+            prob.addMinimize(izq.addTerm(-1, der), "minimize");
+        }
+
+        Collections.addAll(resBinaria, listaW2);
+        Collections.addAll(resBinaria, listaA2);
+        return resBinaria;
     }
 
-    private void resolver_lp(IloCplex problem) throws IloException {
+    private void resolver_lp(){
         //Definir los parametros del solver
-        problem.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
+        prob.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
         //Resolver el lp
         prob.solve();
     }
