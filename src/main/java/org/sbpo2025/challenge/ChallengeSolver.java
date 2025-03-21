@@ -14,6 +14,7 @@ public class ChallengeSolver {
     private final double EPSILON = 0.001;
     private final double INF = Double.MIN_VALUE;
     private final double TOLERANCE = Math.exp(-6);
+    private double valorObjetivoGeneral;
 
     protected List<Map<Integer, Integer>> orders;
     protected List<Map<Integer, Integer>> aisles;
@@ -33,7 +34,6 @@ public class ChallengeSolver {
     public ChallengeSolution solve(StopWatch stopWatch) throws IloException {
         // DEFINICIÓN DEL MODELO Y SOLVER
         //Decidimos qué modelo vamos a usar (el que tenga que resolver menos PL
-        IloCplex prob = new IloCplex();
         int cantPasillos = this.aisles.size();
         double valorObjetivoActual;
         double rango_k = Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) + Math.log(1 / EPSILON);
@@ -45,8 +45,8 @@ public class ChallengeSolver {
             double valorObjetivo;
             List<List<Boolean>> solucionActual;
             for (int aPrima = 1;  aPrima < cantPasillos + 1 ; aPrima++){ //incluyo ese máximo
-                solucionActual = planteoPasillosFijos(prob, aPrima);
-                valorObjetivoActual = prob.getObjValue() / aPrima;
+                solucionActual = planteoPasillosFijos(aPrima);
+                valorObjetivoActual = valorObjetivoGeneral / aPrima;
                 if (maximo < valorObjetivoActual){
                     maximo = valorObjetivoActual;
                     dictWSol = solucionActual.get(0);
@@ -87,7 +87,8 @@ public class ChallengeSolver {
         return new ChallengeSolution(finalOrder, finalAisle);
     }
 
-    private List<List<Boolean>> planteoPasillosFijos(IloCplex prob, int aPrima) throws IloException {
+    private List<List<Boolean>> planteoPasillosFijos(int aPrima) throws IloException {
+        IloCplex prob = new IloCplex();
         List<List<Boolean>> resPasillos = new ArrayList<>();
 
         if (this.orders.isEmpty() || this.aisles.isEmpty()) {
@@ -161,7 +162,8 @@ public class ChallengeSolver {
         } else {
             System.out.println("No se encontró solución óptima.");
         }
-        prob.clearModel();
+        valorObjetivoGeneral = prob.getObjValue();
+        prob.endModel();
         return resPasillos;
     }
     /*
