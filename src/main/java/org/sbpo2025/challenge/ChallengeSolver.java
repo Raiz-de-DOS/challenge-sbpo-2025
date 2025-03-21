@@ -1,14 +1,13 @@
 package org.sbpo2025.challenge;
 
-import ilog.concert.IloException;
-import ilog.concert.IloIntVar;
-import ilog.concert.IloLinearIntExpr;
-import ilog.concert.IloNumVar;
+import ilog.concert.*;
 import ilog.cplex.IloCplex;
 import org.apache.commons.lang3.time.StopWatch;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ChallengeSolver {
     private final long MAX_RUNTIME = 600000; // milliseconds; 10 minutes
@@ -21,10 +20,9 @@ public class ChallengeSolver {
     protected int nItems;
     protected int waveSizeLB;
     protected int waveSizeUB;
-    protected IloCplex prob;
 
     public ChallengeSolver(
-            List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles, int nItems, int waveSizeLB, int waveSizeUB) {
+            List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles, int nItems, int waveSizeLB, int waveSizeUB) throws IloException {
         this.orders = orders;
         this.aisles = aisles;
         this.nItems = nItems;
@@ -36,38 +34,37 @@ public class ChallengeSolver {
 
         // DEFINICIÓN DEL MODELO Y SOLVER
         //Decidimos qué modelo vamos a usar (el que tenga que resolver menos PL
-
+        IloCplex prob = new IloCplex();
         int cantPasillos = this.aisles.size();
         double valorObjetivoActual;
         double rango_k = Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) + Math.log(1 / EPSILON);
-        Map<Integer, Boolean> dictWSol;
-        Map<Integer, Boolean> dictASol;
+        List<Boolean> dictWSol = List.of();
+        List<Boolean> dictASol = List.of();
 
-        if (cantPasillos <= Math.ceil(rango_k)) {
+        if (true || cantPasillos <= Math.ceil(rango_k)) {
             double maximo = INF;
             double valorObjetivo;
-            Map<Integer, Boolean>[] solucionActual;
+            List<List<Boolean>> solucionActual;
             for (int aPrima = 1;  aPrima < cantPasillos + 1 ; aPrima++){ //incluyo ese máximo
-                solucionActual = planteoPasillosFijos(aPrima);
-                resolver_lp(prob);
+                solucionActual = planteoPasillosFijos(prob, aPrima);
                 valorObjetivoActual = prob.getObjValue() / aPrima;
                 if (maximo < valorObjetivoActual){
                     maximo = valorObjetivoActual;
-                    dictWSol = solucionActual[0];
-                    dictASol = solucionActual[1];
+                    dictWSol = solucionActual.get(0);
+                    dictASol = solucionActual.get(1);
                     valorObjetivo = valorObjetivoActual;
                     System.out.println(valorObjetivo);
                 }
             }
-        } else {
+        }
+        /*else {
             int l = this.waveSizeLB;
             int u = this.waveSizeUB;
             int k;
-            Map<Integer, Boolean>[] dictSol = new Map[2];
+            List<List<Boolean>> dictSol;
             while (u - l > EPSILON) {
                 k = Math.floorDiv(u - l, 2);
                 dictSol = planteo_busqueda_binaria(k);
-                resolver_lp(prob);
                 valorObjetivoActual = prob.getObjValue();
                 if (valorObjetivoActual > 0) { //Era infactible con ese valor de k alto
                     u = k;
@@ -75,19 +72,33 @@ public class ChallengeSolver {
                     l = k;
                 }
             }
-            dictWSol = dictSol[0];
-            dictASol = dictSol[1];
+            dictWSol = dictSol.get(0);
+            dictASol = dictSol.get(1);
             System.out.println(prob.getObjValue());
         }
+        */
+        //dictWSol = [0,1,1,0....]
+        // solucion = {1,2}
+        List<Boolean> finalDictWSol = dictWSol;
+        List<Boolean> finalDictASol = dictASol;
+        Set<Integer> finalOrder = IntStream.range(0, orders.size()).filter(finalDictWSol::get).boxed().collect(Collectors.toSet());
+        Set<Integer> finalAisle = IntStream.range(0, aisles.size()).filter(finalDictASol::get).boxed().collect(Collectors.toSet());
 
-        ChallengeSolution solution = new ChallengeSolution(dictWSol.keySet().stream().filter(k -> dictWSol.get(k)), dictASol.keySet().stream().filter(k -> dictASol.get(k));
+
+        ChallengeSolution solution = new ChallengeSolution(finalOrder, finalAisle);
         return null;
     }
 
-    private List<IloNumVar> planteoPasillosFijos(int aPrima) throws IloException {
-        List<IloNumVar> resPasillos = new ArrayList<>();
-        IloNumVar[] listaW1 = new IloNumVar[this.orders.size()];
-        IloNumVar[] listaA1 = new IloNumVar[this.aisles.size()];
+    private List<List<Boolean>> planteoPasillosFijos(IloCplex prob, int aPrima) throws IloException {
+        prob.clearModel();
+        List<List<Boolean>> resPasillos = new ArrayList<>();
+
+        if (this.orders.isEmpty() || this.aisles.isEmpty()) {
+            throw new IloException("Error: No hay órdenes o pasillos disponibles.");
+        }
+
+        IloIntVar[] listaW1 = new IloIntVar[this.orders.size()];
+        IloIntVar[] listaA1 = new IloIntVar[this.aisles.size()];
 
         //Si la orden pertenece a la wave
         for(int o = 0; o < this.orders.size(); o++){
@@ -103,7 +114,7 @@ public class ChallengeSolver {
         IloLinearIntExpr suma = prob.linearIntExpr();
         for (int o = 0; o < this.orders.size(); o++) {
             for (Map.Entry<Integer, Integer> i : this.orders.get(o).entrySet()) {
-                suma.addTerm(i.getValue().intValue(), (IloIntVar) listaW1[o]);
+                suma.addTerm(i.getValue(), listaW1[o]);
             }
         }
         prob.addLe(suma, this.waveSizeUB);
@@ -116,11 +127,11 @@ public class ChallengeSolver {
 
             for (int o = 0; o < this.orders.size(); o++) {
                 int u_oi = this.orders.get(o).getOrDefault(i, 0);
-                izq.addTerm(u_oi, (IloIntVar) listaW1[o]);
+                izq.addTerm(u_oi, listaW1[o]);
             }
             for (int a = 0; a < this.aisles.size(); a++) {
                 int u_ai = this.aisles.get(a).getOrDefault(i, 0);
-                der.addTerm(u_ai, (IloIntVar) listaA1[a]);
+                der.addTerm(u_ai, listaA1[a]);
             }
             prob.addLe(izq, der); // Agrega la restricción
         }
@@ -128,18 +139,37 @@ public class ChallengeSolver {
         //La cantidad de pasillos usados es A* (pasado por parámetro)
         IloLinearIntExpr sumaDeA = prob.linearIntExpr();
         for (int a = 0; a < this.aisles.size(); a++) {
-            sumaDeA.addTerm(1, (IloIntVar) listaA1[a]);
+            sumaDeA.addTerm(1, listaA1[a]);
         }
         prob.addEq(sumaDeA, aPrima);
         prob.addMaximize(suma);
 
-        Collections.addAll(resPasillos, listaW1);
-        Collections.addAll(resPasillos, listaA1);
+        prob.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
+        //Resolver el lp
+        // Resolver el modelo
+        if (prob.solve()) {
+            List<Boolean> valoresW = new ArrayList<>();
+            List<Boolean> valoresA = new ArrayList<>();
+
+            for (IloIntVar w : listaW1) {
+                valoresW.add(prob.getValue(w) >= 0.5);
+            }
+
+            for (IloIntVar a : listaA1) {
+                valoresA.add(prob.getValue(a) >= 0.5);
+            }
+
+            resPasillos.add(valoresW);
+            resPasillos.add(valoresA);
+        } else {
+            System.out.println("No se encontró solución óptima.");
+        }
+
         return resPasillos;
     }
-
-    private List<IloNumVar> planteo_busqueda_binaria(int k) throws IloException {
-        List<IloNumVar> resBinaria = new ArrayList<>();
+    /*
+    private List<List<Boolean>> planteo_busqueda_binaria(int k) throws IloException {
+        List<List<Boolean>> resBinaria = new ArrayList<>();
         IloNumVar[] listaW2 = new IloNumVar[this.orders.size()];
         IloNumVar[] listaA2 = new IloNumVar[this.aisles.size()];
 
@@ -188,13 +218,7 @@ public class ChallengeSolver {
         Collections.addAll(resBinaria, listaA2);
         return resBinaria;
     }
-
-    private void resolver_lp(){
-        //Definir los parametros del solver
-        prob.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
-        //Resolver el lp
-        prob.solve();
-    }
+    */
     /*
      * Get the remaining time in seconds
      */
@@ -266,3 +290,5 @@ public class ChallengeSolver {
         return (double) totalUnitsPicked / numVisitedAisles;
     }
 }
+//java -Djava.library.path=""HOME/Users/DAFNE/OneDrive/Documentos/GitHub/challenge-sbpo-2025\cplex\lib\cplex.jar"" -jar target/ChallengeSBPO2025-1.0.jar datasets/a/instance_0001.txt primerRes.txt
+// java -Djava.library.path="C:\Program Files\IBM\ILOG\CPLEX_Studio2211\cplex\bin\x64_win64" -jar target/ChallengeSBPO2025-1.0.jar datasets\a\instance_0001.txt salida.txt

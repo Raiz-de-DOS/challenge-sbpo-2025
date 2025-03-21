@@ -109,7 +109,7 @@ public class Challenge {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IloException {
         // Start the stopwatch to track the running time
         StopWatch stopWatch = StopWatch.createStarted();
 
@@ -124,11 +124,12 @@ public class Challenge {
                 challenge.orders, challenge.aisles, challenge.nItems, challenge.waveSizeLB, challenge.waveSizeUB);
         ChallengeSolution challengeSolution = null;
         try {
-            challengeSolution = challengeSolver.solve(stopWatch);
+            challengeSolution = ChallengeSolver.solve(stopWatch);
         } catch (IloException e) {
             System.out.println("error");
         }
 
-        challenge.writeOutput(challengeSolution, args[1]);
+        Challenge.writeOutput(ChallengeSolution, args[1]);
     }
 }
+
