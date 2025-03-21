@@ -15,7 +15,7 @@
     </properties>
 
     <!--    Run, once, before using CPLEX:-->
-    <!--    mvn install:install-file -Dfile=/Applications/CPLEX_Studio2211//cplex/lib/cplex.jar -DgroupId=cplex -DartifactId=cplex -Dversion=22.11 -Dpackaging=jar-->
+    <!--    mvn install:install-file -Dfile=/"C:/Users/DAFNE/challenge-sbpo-2025/cplex/lib/cplex.jar" -DgroupId=cplex -DartifactId=cplex -Dversion=22.11 -Dpackaging=jar-->
 
     <dependencies>
         <dependency>

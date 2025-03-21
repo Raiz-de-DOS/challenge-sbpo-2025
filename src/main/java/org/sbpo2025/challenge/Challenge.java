@@ -70,7 +70,7 @@ public class Challenge {
         }
     }
 
-    public void writeOutput(ChallengeSolution challengeSolution, String outputFilePath) {
+    public static void writeOutput(ChallengeSolution challengeSolution, String outputFilePath) {
         if (challengeSolution == null) {
             System.err.println("Solution not found");
             return;
@@ -117,19 +117,18 @@ public class Challenge {
             System.out.println("Usage: java -jar target/ChallengeSBPO2025-1.0.jar <inputFilePath> <outputFilePath>");
             return;
         }
-
         Challenge challenge = new Challenge();
         challenge.readInput(args[0]);
         var challengeSolver = new ChallengeSolver(
                 challenge.orders, challenge.aisles, challenge.nItems, challenge.waveSizeLB, challenge.waveSizeUB);
         ChallengeSolution challengeSolution = null;
         try {
-            challengeSolution = ChallengeSolver.solve(stopWatch);
+            challengeSolution = challengeSolver.solve(stopWatch);
         } catch (IloException e) {
             System.out.println("error");
         }
 
-        Challenge.writeOutput(ChallengeSolution, args[1]);
+        Challenge.writeOutput(challengeSolution, args[1]);
     }
 }
 

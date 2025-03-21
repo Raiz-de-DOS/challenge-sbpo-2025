@@ -31,7 +31,6 @@ public class ChallengeSolver {
     }
 
     public ChallengeSolution solve(StopWatch stopWatch) throws IloException {
-
         // DEFINICIÓN DEL MODELO Y SOLVER
         //Decidimos qué modelo vamos a usar (el que tenga que resolver menos PL
         IloCplex prob = new IloCplex();
@@ -85,12 +84,10 @@ public class ChallengeSolver {
         Set<Integer> finalAisle = IntStream.range(0, aisles.size()).filter(finalDictASol::get).boxed().collect(Collectors.toSet());
 
 
-        ChallengeSolution solution = new ChallengeSolution(finalOrder, finalAisle);
-        return null;
+        return new ChallengeSolution(finalOrder, finalAisle);
     }
 
     private List<List<Boolean>> planteoPasillosFijos(IloCplex prob, int aPrima) throws IloException {
-        prob.clearModel();
         List<List<Boolean>> resPasillos = new ArrayList<>();
 
         if (this.orders.isEmpty() || this.aisles.isEmpty()) {
@@ -106,7 +103,7 @@ public class ChallengeSolver {
         }
 
         //Si se usa el pasillo a
-        for(int a = 0; a < aPrima; a++){
+        for(int a = 0; a < this.aisles.size(); a++){
             listaA1[a] = prob.boolVar(String.format("A_%d",a));
         }
 
@@ -164,7 +161,7 @@ public class ChallengeSolver {
         } else {
             System.out.println("No se encontró solución óptima.");
         }
-
+        prob.clearModel();
         return resPasillos;
     }
     /*
@@ -291,4 +288,4 @@ public class ChallengeSolver {
     }
 }
 //java -Djava.library.path=""HOME/Users/DAFNE/OneDrive/Documentos/GitHub/challenge-sbpo-2025\cplex\lib\cplex.jar"" -jar target/ChallengeSBPO2025-1.0.jar datasets/a/instance_0001.txt primerRes.txt
-// java -Djava.library.path="C:\Program Files\IBM\ILOG\CPLEX_Studio2211\cplex\bin\x64_win64" -jar target/ChallengeSBPO2025-1.0.jar datasets\a\instance_0001.txt salida.txt
+// java -Djava.library.path="C:/Users/DAFNE/challenge-sbpo-2025/cplex/bin/x64_win64" -jar target/ChallengeSBPO2025-1.0.jar datasets\a\instance_0001.txt salida.txt
