@@ -1,9 +1,6 @@
 package org.sbpo2025.challenge;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -38,37 +35,38 @@ public class ChallengeSolver {
         // DEFINICIÓN DEL MODELO Y SOLVER
         //Decidimos qué modelo vamos a usar (el que tenga que resolver menos PL
         int cantPasillos = this.aisles.size();
-        double rango_k = Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) + Math.log(1 / EPSILON);
+        double epsilon = 1/ (double) cantPasillos;
+        double rango_k = (Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) - Math.log(epsilon))/(Math.log(2.0));
         List<Boolean> dictWSol = List.of();
         List<Boolean> dictASol = List.of();
         IloCplex prob = new IloCplex();
         prob.setOut(null);
 
-        if (true || cantPasillos <= Math.ceil(rango_k)) {
-            List<List<Boolean>> solucionActual = planteoPasillosFijos(prob);;
+        System.out.println(String.format("Cantidad de pasillos: %d", cantPasillos));
+        System.out.println(String.format("LB: %d", this.waveSizeLB));
+        System.out.println(String.format("UB: %d", this.waveSizeUB));
+
+        System.out.println(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos));
+        System.out.println(Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)));
+        System.out.println(rango_k);
+        // TODO: Debuggear binaria
+//        List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon);
+//            dictWSol = solucionActual.get(0);
+//            dictASol = solucionActual.get(1);
+//            System.out.println(prob.getObjValue());
+
+        if (cantPasillos <= rango_k) {
+            List<List<Boolean>> solucionActual = planteoPasillosFijos(prob);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
         }
-        /*else {
-            int l = this.waveSizeLB;
-            int u = this.waveSizeUB;
-            int k;
-            List<List<Boolean>> dictSol;
-            while (u - l > EPSILON) {
-                k = Math.floorDiv(u - l, 2);
-                dictSol = planteo_busqueda_binaria(k);
-                valorObjetivoActual = prob.getObjValue();
-                if (valorObjetivoActual > 0) { //Era infactible con ese valor de k alto
-                    u = k;
-                }else{
-                    l = k;
-                }
-            }
-            dictWSol = dictSol.get(0);
-            dictASol = dictSol.get(1);
+        else {
+            System.out.println("Eligio binaria");
+            List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon);
+            dictWSol = solucionActual.get(0);
+            dictASol = solucionActual.get(1);
             System.out.println(prob.getObjValue());
         }
-        */
         //dictWSol = [0,1,1,0....]
         // solucion = {1,2}
         List<Boolean> finalDictWSol = dictWSol;
@@ -174,58 +172,111 @@ public class ChallengeSolver {
         return resPasillos;
     }
 
-    /*
-    private List<List<Boolean>> planteo_busqueda_binaria(int k) throws IloException {
-        List<List<Boolean>> resBinaria = new ArrayList<>();
-        IloNumVar[] listaW2 = new IloNumVar[this.orders.size()];
-        IloNumVar[] listaA2 = new IloNumVar[this.aisles.size()];
+
+    private List<List<Boolean>> planteo_busqueda_binaria(IloCplex prob, double epsilon) throws IloException {
+        List<List<Boolean>> resPasillos = new ArrayList<>();
+
+        if (this.orders.isEmpty() || this.aisles.isEmpty()) {
+            throw new IloException("Error: No hay órdenes o pasillos disponibles.");
+        }
+
+        IloIntVar[] listaW1 = new IloIntVar[this.orders.size()];
+        IloIntVar[] listaA1 = new IloIntVar[this.aisles.size()];
 
         //Si la orden pertenece a la wave
-        for(int o = 0; o < this.orders.size(); o++){
-            listaW2[o] = prob.boolVar(String.format("W_%d",o));
+        for (int o = 0; o < this.orders.size(); o++) {
+            listaW1[o] = prob.boolVar(String.format("W_%d", o));
         }
 
         //Si se usa el pasillo a
-        for(int a = 0; a < this.aisles.size(); a++){
-            listaA2[a] = prob.boolVar(String.format("A_%d",a));
+        for (int a = 0; a < this.aisles.size(); a++) {
+            listaA1[a] = prob.boolVar(String.format("A_%d", a));
         }
+
+        IloNumVar z = prob.numVar(0, waveSizeUB, "z");
 
         //La cantidad de elementos que se toman en la Wave está en rango
         IloLinearIntExpr suma = prob.linearIntExpr();
         for (int o = 0; o < this.orders.size(); o++) {
             for (Map.Entry<Integer, Integer> i : this.orders.get(o).entrySet()) {
-                suma.addTerm(i.getValue().intValue(), (IloIntVar) listaW2[o]);
-
-        //Restricción de la forma f = k * g
-        IloLinearIntExpr pasillosUtilizados = prob.linearIntExpr();
-            for (int a = 0; a < this.aisles.size(); a++) {
-                pasillosUtilizados.addTerm(k, (IloIntVar) listaA2[a]);
+                suma.addTerm(i.getValue(), listaW1[o]);
             }
+        }
+        prob.addLe(suma, this.waveSizeUB);
+        prob.addGe(suma, this.waveSizeLB);
 
-        prob.addLe(pasillosUtilizados.addTerm(-1, EPSILON), suma);
-        prob.addGe(pasillosUtilizados.addTerm(1, EPSILON), suma);
-
-        //Función objetivo: REVISAR
+        // Todos los elementos que tomo de un pasillo tienen stock
         for (int i = 0; i < this.nItems; i++) {
-            IloLinearIntExpr izq = prob.linearIntExpr();
-            IloLinearIntExpr der = prob.linearIntExpr();
+            IloLinearNumExpr izq = prob.linearNumExpr();
+            IloLinearNumExpr der = prob.linearNumExpr();
 
             for (int o = 0; o < this.orders.size(); o++) {
                 int u_oi = this.orders.get(o).getOrDefault(i, 0);
-                izq.addTerm(u_oi, (IloIntVar) listaW2[o]);
+                izq.addTerm(u_oi, listaW1[o]);
             }
             for (int a = 0; a < this.aisles.size(); a++) {
                 int u_ai = this.aisles.get(a).getOrDefault(i, 0);
-                der.addTerm(u_ai, (IloIntVar) listaA2[a]);
+                der.addTerm(u_ai, listaA1[a]);
             }
-            prob.addMinimize(izq.addTerm(-1, der), "minimize");
+            der.addTerm(1, z);
+            prob.addLe(izq, der); // Agrega la restricción
         }
 
-        Collections.addAll(resBinaria, listaW2);
-        Collections.addAll(resBinaria, listaA2);
-        return resBinaria;
+        double maximo = INF;
+        double valorObjetivoActual;
+        List<Boolean> valoresW = List.of();
+        List<Boolean> valoresA = List.of();
+        prob.addMinimize(z);
+        prob.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
+        IloLinearNumExpr sumaDeA = prob.linearNumExpr();
+        for (int a = 0; a < this.aisles.size(); a++) {
+            sumaDeA.addTerm(1, listaA1[a]);
+        }
+
+        double searchMin = (double) waveSizeLB/ (double) this.aisles.size();
+        double searchMax = waveSizeUB;
+
+        while (searchMin + epsilon < searchMax){
+            double k = (searchMax + searchMin) / 2;
+            System.out.println(k);
+
+            IloConstraint restriccionA = prob.addEq(prob.prod(k, sumaDeA), suma); // Convertirlo a restricciones ensanguchadas con epsilon
+
+            boolean isSolved = prob.solve();
+
+            if (isSolved){
+                //Resolver el lp
+                double z_obj = prob.getObjValue();
+
+                if (z_obj > 0){
+                    searchMax = k;
+                }
+                else{
+                    searchMin = k;
+                }
+            } else {
+                searchMin = k;
+            }
+
+            prob.remove(restriccionA);
+        }
+
+        valoresW = new ArrayList<>();
+        valoresA = new ArrayList<>();
+
+        for (IloIntVar w : listaW1) {
+            valoresW.add(prob.getValue(w) >= 0.5);
+        }
+
+        for (IloIntVar a : listaA1) {
+            valoresA.add(prob.getValue(a) >= 0.5);
+        }
+
+        resPasillos.add(valoresW);
+        resPasillos.add(valoresA);
+
+        return resPasillos;
     }
-    */
     /*
      * Get the remaining time in seconds
      */

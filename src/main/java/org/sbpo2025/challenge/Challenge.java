@@ -126,7 +126,6 @@ public class Challenge {
             challengeSolution = challengeSolver.solve(stopWatch);
         } catch (IloException e) {
             System.out.println("Caught an exception: " + e.getMessage());
-            System.out.println("error");
         }
 
         Challenge.writeOutput(challengeSolution, args[1]);
