@@ -233,8 +233,9 @@ public class ChallengeSolver {
             sumaDeA.addTerm(1, listaA1[a]);
         }
 
-        double searchMin = (double) waveSizeLB/ (double) this.aisles.size();
+        double searchMin = (double) waveSizeLB / (double) this.aisles.size();
         double searchMax = waveSizeUB;
+        double last_feasible_k = searchMax;
 
         while (searchMin + epsilon < searchMax){
             double k = (searchMax + searchMin) / 2;
@@ -247,6 +248,8 @@ public class ChallengeSolver {
             if (isSolved){
                 //Resolver el lp
                 double z_obj = prob.getObjValue();
+                last_feasible_k = k;
+                System.out.println(String.format("Objetivo: %f", z_obj));
 
                 if (z_obj > 0){
                     searchMax = k;
@@ -255,11 +258,16 @@ public class ChallengeSolver {
                     searchMin = k;
                 }
             } else {
+                System.out.println(String.format("Infactible para k=%f", k));
                 searchMin = k;
             }
 
             prob.remove(restriccionA);
         }
+        
+        prob.addEq(prob.prod(last_feasible_k, sumaDeA), suma);
+        prob.solve();
+        prob.exportModel("model_binaria.lp");
 
         valoresW = new ArrayList<>();
         valoresA = new ArrayList<>();
