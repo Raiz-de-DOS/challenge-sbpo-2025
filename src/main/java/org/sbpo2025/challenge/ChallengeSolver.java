@@ -55,20 +55,19 @@ public class ChallengeSolver {
 //            dictASol = solucionActual.get(1);
 //            System.out.println(prob.getObjValue());
 
-        if (cantPasillos <= rango_k) {
+        if (true || cantPasillos <= rango_k) {
             List<List<Boolean>> solucionActual = planteoPasillosFijos(prob);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
-        }
+        }/*
         else {
             System.out.println("Eligio binaria");
             List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
             System.out.println(prob.getObjValue());
-        }
-        //dictWSol = [0,1,1,0....]
-        // solucion = {1,2}
+        }*/
+
         List<Boolean> finalDictWSol = dictWSol;
         List<Boolean> finalDictASol = dictASol;
         Set<Integer> finalOrder = IntStream.range(0, orders.size()).filter(finalDictWSol::get).boxed().collect(Collectors.toSet());
@@ -128,13 +127,13 @@ public class ChallengeSolver {
         List<Boolean> valoresW = List.of();
         List<Boolean> valoresA = List.of();
         prob.addMaximize(suma);
+        int aPrima = 1;
         prob.setParam(IloCplex.Param.MIP.Tolerances.AbsMIPGap, TOLERANCE);
         IloLinearIntExpr sumaDeA = prob.linearIntExpr();
         for (int a = 0; a < this.aisles.size(); a++) {
             sumaDeA.addTerm(1, listaA1[a]);
         }
-
-        for (int aPrima = 1; aPrima < this.aisles.size() + 1; aPrima++) {
+        while (aPrima < this.aisles.size() + 1 && maximo*aPrima <=  this.waveSizeUB) {
             //int aPrima = 2;
             //La cantidad de pasillos usados es A* (pasado por parámetro)
 
@@ -164,6 +163,7 @@ public class ChallengeSolver {
                 System.out.println(String.format("Infactible para a'=%d", aPrima));
             }
             prob.remove(restriccionA);
+            aPrima++;
         }
 
         resPasillos.add(valoresW);
