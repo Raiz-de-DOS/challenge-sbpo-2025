@@ -48,6 +48,8 @@ class WaveOrderPicking:
 
     def is_solution_feasible(self, selected_orders, visited_aisles):
         total_units_picked = 0
+        print(selected_orders)
+        print(self.orders)
         for order in selected_orders:
             total_units_picked += np.sum(list(self.orders[order].values()))
 

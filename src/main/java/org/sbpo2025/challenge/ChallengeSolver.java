@@ -4,15 +4,13 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
 import ilog.concert.*;
 import org.apache.commons.lang3.time.StopWatch;
-
 import ilog.cplex.IloCplex;
 
 public class ChallengeSolver {
     private final long MAX_RUNTIME = 600000; // milliseconds; 10 minutes
-    private final double EPSILON = 0.01;
+    private final double EPSILON = .50;
     private final double MINUS_INF = Double.MIN_VALUE;
     private final double TOLERANCE = Math.exp(-6);
 
@@ -35,13 +33,12 @@ public class ChallengeSolver {
         // DEFINICIÓN DEL MODELO Y SOLVER
         //Decidimos qué modelo vamos a usar (el que tenga que resolver menos PL
         int cantPasillos = this.aisles.size();
-        double epsilon = 1/ (double) cantPasillos;
-        double rango_k = (Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) - Math.log(epsilon))/(Math.log(2.0));
+        double epsilon = 1 / (double) cantPasillos;
+        double rango_k = (Math.log(this.waveSizeUB - ((double) this.waveSizeLB / cantPasillos)) - Math.log(epsilon)) / (Math.log(2.0));
         List<Boolean> dictWSol = List.of();
         List<Boolean> dictASol = List.of();
         IloCplex prob = new IloCplex();
         prob.setOut(null);
-
         System.out.println(String.format("Cantidad de pasillos: %d", cantPasillos));
         System.out.println(String.format("LB: %d", this.waveSizeLB));
         System.out.println(String.format("UB: %d", this.waveSizeUB));
@@ -51,20 +48,16 @@ public class ChallengeSolver {
             List<List<Boolean>> solucionActual = planteoPasillosFijos(prob);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
-        }
-        else {
+        } else {
             System.out.println("Eligio binaria");
             List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
-            System.out.println(prob.getObjValue());
         }
-
         List<Boolean> finalDictWSol = dictWSol;
         List<Boolean> finalDictASol = dictASol;
         Set<Integer> finalOrder = IntStream.range(0, orders.size()).filter(finalDictWSol::get).boxed().collect(Collectors.toSet());
         Set<Integer> finalAisle = IntStream.range(0, aisles.size()).filter(finalDictASol::get).boxed().collect(Collectors.toSet());
-
         return new ChallengeSolution(finalOrder, finalAisle);
     }
 
@@ -125,19 +118,19 @@ public class ChallengeSolver {
             sumaDeA.addTerm(1, listaA1[a]);
         }
 
-        for (int aPrima = 1; aPrima < this.aisles.size() + 1 && maximo * aPrima <= this.waveSizeUB; aPrima++) {
+        for (int aPrima = 1; aPrima < this.aisles.size() + 1 && maximo * aPrima <= this.waveSizeUB ; aPrima++) {
             //int aPrima = 2;
             //La cantidad de pasillos usados es A* (pasado por parámetro)
 
             IloConstraint restriccionA = prob.addEq(sumaDeA, aPrima);
 
-            if (prob.solve()){
+            if (prob.solve()) {
                 //Resolver el lp
                 valorObjetivoActual = prob.getObjValue() / aPrima;
 
                 if (maximo <= valorObjetivoActual) {
                     maximo = valorObjetivoActual;
-
+                    System.out.println(valorObjetivoActual);
                     valoresW = new ArrayList<>();
                     valoresA = new ArrayList<>();
 
@@ -149,23 +142,19 @@ public class ChallengeSolver {
                         valoresA.add(prob.getValue(a) >= 0.5);
                     }
                 }
-                System.out.println(valorObjetivoActual);
-                //prob.exportModel(String.format("model_%d.lp", aPrima));
             } else {
                 System.out.println(String.format("Infactible para a'=%d", aPrima));
             }
             prob.remove(restriccionA);
         }
-
+        //System.out.println(prob.getValue(suma) / prob.getValue(sumaDeA));
         resPasillos.add(valoresW);
         resPasillos.add(valoresA);
-
         return resPasillos;
     }
 
-
     private List<List<Boolean>> planteo_busqueda_binaria(IloCplex prob, double epsilon) throws IloException {
-        List<List<Boolean>> resPasillos = new ArrayList<>();
+        List<List<Boolean>> resBB = new ArrayList<>();
 
         if (this.orders.isEmpty() || this.aisles.isEmpty()) {
             throw new IloException("Error: No hay órdenes o pasillos disponibles.");
@@ -214,8 +203,18 @@ public class ChallengeSolver {
             prob.addLe(izq, der); //Stock is upper bound of grabbed items for all i
         }
 
-        double maximo = MINUS_INF;
-        double valorObjetivoActual;
+        //List all possible values of k
+        Set<Double> conjValoresK = new HashSet<>();
+        for (int b = waveSizeLB; b < waveSizeUB + 1; b++) {
+            for (int a = 1; a <= aisles.size(); a++) {
+                conjValoresK.add((double) b / a);
+            }
+        }
+        // Convert Set a List
+        List<Double> valoresK = new ArrayList<>(conjValoresK);
+        Collections.sort(valoresK); // Ordenar la lista
+        System.out.println(valoresK);
+        //We will run the binary search on the array, instead of taking an epsilon
         List<Boolean> valoresW = List.of();
         List<Boolean> valoresA = List.of();
         prob.addMinimize(z);
@@ -226,62 +225,45 @@ public class ChallengeSolver {
         for (int a = 0; a < this.aisles.size(); a++) {
             sumaDeA.addTerm(1, listaA1[a]);
         }
+        prob.addGe(sumaDeA, 1);
 
         //Set params for the binary search
-        double searchMin = (double) waveSizeLB / (double) this.aisles.size();
-        double searchMax = waveSizeUB;
-        double lastLowerBoundK = waveSizeLB;
+        int searchMin = 0;
+        int searchMax = valoresK.size();
 
-        while (searchMin + EPSILON < searchMax){ //Termination criterion
-            double k = (searchMax + searchMin) / 2;
-            System.out.println(k);
-            //IloObjective obj = prob.addMaximize(prob.sum(prob.prod(-k, sumaDeA), suma));
-            //IloConstraint restriccionK = prob.addLe((prob.sum(prob.prod(-k, sumaDeA), suma)), 0); //Ask for the k value to be an upper bound for the quotient
+        while (searchMin < searchMax - 1) { //Termination criterion
+            int j = (int) Math.floor((double) (searchMax + searchMin) / 2);
+            System.out.println(valoresK.get(j));
 
-            IloConstraint restriccionA1 = prob.addGe(prob.sum(prob.prod(k, sumaDeA), prob.prod(-1, suma)), -0.05); // Convertirlo a restricciones ensanguchadas con epsilon
-            IloConstraint restriccionA2 = prob.addLe(prob.sum(prob.prod(k, sumaDeA), prob.prod(-1, suma)), 0.05);
+            IloConstraint restriccion1 = prob.addGe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
+            IloConstraint restriccion2 = prob.addLe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), EPSILON - 10e-3);
 
             boolean isSolved = prob.solve();
-
-            if (isSolved){
-                //Resolver el lp
-                System.out.println(isSolved);
-
-                //Print the value of z
+            if (isSolved) {
                 double z_obj = prob.getObjValue();
                 System.out.println(String.format("Objetivo: %f", z_obj));
+                if (z_obj > 0) {
+                    searchMax = j;
 
-                searchMax = k;
-
-                if (z_obj > 0){
-                    searchMax = k;
                 }
                 else {
-                    lastLowerBoundK = k;
-                    searchMin = k;
+                    searchMin = j;
                 }
-
             } else {
-                System.out.println(String.format("Infactible", k));
-                lastLowerBoundK = k;
-                searchMin = k;
-                // searchMax = k;
+                System.out.println(String.format("Infactible", j));
+                searchMax = j;
             }
-
-            prob.remove(restriccionA1);
-            prob.remove(restriccionA2);
-            //prob.remove(obj);
-            //prob.remove(restriccionK);
+            prob.remove(restriccion1);
+            prob.remove(restriccion2);
         }
 
         //Finally, when the binary search find k value,
-        //prob.addMaximize(prob.sum(prob.prod(-lastLowerBoundK, sumaDeA), suma));
-
-        prob.addGe(prob.sum(prob.prod(lastLowerBoundK, sumaDeA), prob.prod(-1, suma)), -0.05); // Convertirlo a restricciones ensanguchadas con epsilon
-        prob.addLe(prob.sum(prob.prod(lastLowerBoundK, sumaDeA), prob.prod(-1, suma)), 0.05);
+        prob.addGe(prob.sum(prob.prod(valoresK.get(searchMin), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
+        prob.addLe(prob.sum(prob.prod(valoresK.get(searchMin), sumaDeA), prob.prod(-1, suma)), EPSILON);
         prob.solve();
+        System.out.println(prob.getObjValue());
         prob.exportModel("model_binaria.lp");
-
+        System.out.println(valoresK.get(searchMin));
         valoresW = new ArrayList<>();
         valoresA = new ArrayList<>();
 
@@ -292,11 +274,11 @@ public class ChallengeSolver {
         for (IloIntVar a : listaA1) {
             valoresA.add(prob.getValue(a) >= 0.5);
         }
-
-        resPasillos.add(valoresW);
-        resPasillos.add(valoresA);
-
-        return resPasillos;
+        System.out.println(valoresW);
+        System.out.println(valoresA);
+        resBB.add(valoresW);
+        resBB.add(valoresA);
+        return resBB;
     }
     /*
      * Get the remaining time in seconds
@@ -369,6 +351,7 @@ public class ChallengeSolver {
         return (double) totalUnitsPicked / numVisitedAisles;
     }
 }
+
 //java -Djava.library.path=""HOME/Users/DAFNE/OneDrive/Documentos/GitHub/challenge-sbpo-2025\cplex\lib\cplex.jar"" -jar target/ChallengeSBPO2025-1.0.jar datasets/a/instance_0001.txt primerRes.txt
 // java -Djava.library.path="C:/Users/DAFNE/challenge-sbpo-2025/cplex/bin/x64_win64" -jar target/ChallengeSBPO2025-1.0.jar datasets\a\instance_0001.txt salida.txt
 // java -jar target/ChallengeSBPO2025-1.0.jar input_prueba.txt ./outputs.txt
