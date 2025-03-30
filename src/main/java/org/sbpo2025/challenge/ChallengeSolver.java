@@ -2,14 +2,32 @@ package org.sbpo2025.challenge;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;package org.sbpo2025.challenge;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import ilog.concert.*;
+
 import org.apache.commons.lang3.time.StopWatch;
+
+import ilog.concert.IloConstraint;
+import ilog.concert.IloException;
+import ilog.concert.IloIntVar;
+import ilog.concert.IloLinearIntExpr;
+import ilog.concert.IloLinearNumExpr;
+import ilog.concert.IloNumVar;
 import ilog.cplex.IloCplex;
 
 public class ChallengeSolver {
-    private final long MAX_RUNTIME = 600000; // milliseconds; 10 minutes
+    private final long MAX_RUNTIME = 1000 * 60 * 10; // milliseconds; 10 minutes
+    private final long MAX_REMAINING_SECONDS_TO_STOP = 10; // seconds; 1 minute
     private final double EPSILON = .50;
     private final double MINUS_INF = Double.MIN_VALUE;
     private final double TOLERANCE = Math.exp(-6);
@@ -39,18 +57,19 @@ public class ChallengeSolver {
         List<Boolean> dictASol = List.of();
         IloCplex prob = new IloCplex();
         prob.setOut(null);
+  
         System.out.println(String.format("Cantidad de pasillos: %d", cantPasillos));
         System.out.println(String.format("LB: %d", this.waveSizeLB));
         System.out.println(String.format("UB: %d", this.waveSizeUB));
 
-        if (false && cantPasillos <= rango_k) {
+        if (cantPasillos <= rango_k) {
             System.out.println("Eligio pasillos");
             List<List<Boolean>> solucionActual = planteoPasillosFijos(prob);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
         } else {
             System.out.println("Eligio binaria");
-            List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon);
+            List<List<Boolean>> solucionActual = planteo_busqueda_binaria(prob, epsilon, stopWatch);
             dictWSol = solucionActual.get(0);
             dictASol = solucionActual.get(1);
         }
@@ -153,7 +172,7 @@ public class ChallengeSolver {
         return resPasillos;
     }
 
-    private List<List<Boolean>> planteo_busqueda_binaria(IloCplex prob, double epsilon) throws IloException {
+    private List<List<Boolean>> planteo_busqueda_binaria(IloCplex prob, double epsilon, StopWatch stopWatch) throws IloException {
         List<List<Boolean>> resBB = new ArrayList<>();
 
         if (this.orders.isEmpty() || this.aisles.isEmpty()) {
@@ -213,7 +232,6 @@ public class ChallengeSolver {
         // Convert Set a List
         List<Double> valoresK = new ArrayList<>(conjValoresK);
         Collections.sort(valoresK); // Ordenar la lista
-        System.out.println(valoresK);
         //We will run the binary search on the array, instead of taking an epsilon
         List<Boolean> valoresW = List.of();
         List<Boolean> valoresA = List.of();
@@ -231,51 +249,76 @@ public class ChallengeSolver {
         int searchMin = 0;
         int searchMax = valoresK.size();
 
-        while (searchMin < searchMax - 1) { //Termination criterion
+        // Solve the model for the LB to have the worst case scenario
+        IloConstraint restriccion1 = prob.addGe(prob.sum(prob.prod(valoresK.get(0), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
+        IloConstraint restriccion2 = prob.addLe(prob.sum(prob.prod(valoresK.get(0), sumaDeA), prob.prod(-1, suma)), EPSILON - 10e-3);
+
+        boolean isSolved = prob.solve();
+
+        if (isSolved){
+            valoresW = new ArrayList<>();
+            valoresA = new ArrayList<>();
+
+            for (IloIntVar w : listaW1) {
+                valoresW.add(prob.getValue(w) >= 0.5);
+            }
+
+            for (IloIntVar a : listaA1) {
+                valoresA.add(prob.getValue(a) >= 0.5);
+            }
+        }
+        else{
+            System.out.println(String.format("Infactible", 0));
+            return null;
+        }
+
+        prob.remove(restriccion1);
+        prob.remove(restriccion2);
+
+        System.out.println(valoresK.get(0));
+        int remainingTime = (int) this.getRemainingTime(stopWatch);
+        
+        while (searchMin < searchMax - 1 && remainingTime > this.MAX_REMAINING_SECONDS_TO_STOP) { //Termination criterion
+            prob.setParam(IloCplex.Param.TimeLimit, remainingTime-5);
+
+            System.out.println(String.format("Remaining time: %d", remainingTime));
             int j = (int) Math.floor((double) (searchMax + searchMin) / 2);
-            System.out.println(valoresK.get(j));
 
-            IloConstraint restriccion1 = prob.addGe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
-            IloConstraint restriccion2 = prob.addLe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), EPSILON - 10e-3);
+            restriccion1 = prob.addGe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
+            restriccion2 = prob.addLe(prob.sum(prob.prod(valoresK.get(j), sumaDeA), prob.prod(-1, suma)), EPSILON - 10e-3);
 
-            boolean isSolved = prob.solve();
+            isSolved = prob.solve();
+
             if (isSolved) {
                 double z_obj = prob.getObjValue();
                 System.out.println(String.format("Objetivo: %f", z_obj));
                 if (z_obj > 0) {
                     searchMax = j;
-
                 }
                 else {
                     searchMin = j;
+        
+                    valoresW = new ArrayList<>();
+                    valoresA = new ArrayList<>();
+
+                    for (IloIntVar w : listaW1) {
+                        valoresW.add(prob.getValue(w) >= 0.5);
+                    }
+
+                    for (IloIntVar a : listaA1) {
+                        valoresA.add(prob.getValue(a) >= 0.5);
+                    }
                 }
             } else {
                 System.out.println(String.format("Infactible", j));
-                searchMax = j;
+                return null;
             }
+
             prob.remove(restriccion1);
             prob.remove(restriccion2);
+            remainingTime = (int) this.getRemainingTime(stopWatch);
         }
 
-        //Finally, when the binary search find k value,
-        prob.addGe(prob.sum(prob.prod(valoresK.get(searchMin), sumaDeA), prob.prod(-1, suma)), -EPSILON); // Convertirlo a restricciones ensanguchadas con epsilon
-        prob.addLe(prob.sum(prob.prod(valoresK.get(searchMin), sumaDeA), prob.prod(-1, suma)), EPSILON);
-        prob.solve();
-        System.out.println(prob.getObjValue());
-        prob.exportModel("model_binaria.lp");
-        System.out.println(valoresK.get(searchMin));
-        valoresW = new ArrayList<>();
-        valoresA = new ArrayList<>();
-
-        for (IloIntVar w : listaW1) {
-            valoresW.add(prob.getValue(w) >= 0.5);
-        }
-
-        for (IloIntVar a : listaA1) {
-            valoresA.add(prob.getValue(a) >= 0.5);
-        }
-        System.out.println(valoresW);
-        System.out.println(valoresA);
         resBB.add(valoresW);
         resBB.add(valoresA);
         return resBB;
