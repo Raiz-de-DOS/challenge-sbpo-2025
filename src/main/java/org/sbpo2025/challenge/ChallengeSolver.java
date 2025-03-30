@@ -1,9 +1,5 @@
 package org.sbpo2025.challenge;
 
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;package org.sbpo2025.challenge;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -398,3 +394,4 @@ public class ChallengeSolver {
 //java -Djava.library.path=""HOME/Users/DAFNE/OneDrive/Documentos/GitHub/challenge-sbpo-2025\cplex\lib\cplex.jar"" -jar target/ChallengeSBPO2025-1.0.jar datasets/a/instance_0001.txt primerRes.txt
 // java -Djava.library.path="C:/Users/DAFNE/challenge-sbpo-2025/cplex/bin/x64_win64" -jar target/ChallengeSBPO2025-1.0.jar datasets\a\instance_0001.txt salida.txt
 // java -jar target/ChallengeSBPO2025-1.0.jar input_prueba.txt ./outputs.txt
+
